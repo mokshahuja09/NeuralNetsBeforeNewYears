@@ -11,6 +11,7 @@ def myPrint(statement = f"Demo Day", supress = True):
         if not supress:
             print(statement)
 
+#----------------------------------------- Tensor Class --------------------------------------------
 class Tensor:
     def __init__(self, x: np.ndarray, grad = None, parents = None , grad_fn = None):
 
@@ -21,7 +22,6 @@ class Tensor:
         self.parents = parents # The parent tensors that created this output
 
         self.grad_fn = grad_fn # Function through which parent tensors were fed to create this tensor
-
 
     def backwards(self):
         '''
@@ -96,6 +96,7 @@ class Tensor:
 
         myPrint(f"Here is the dependency list of tensors :{dependencies}", supress= False)
 
+        # Starts the backward pass through the dependency list.
         for i in range(len(dependencies)):
 
             ith_Tensor = dependencies[i]
@@ -104,7 +105,7 @@ class Tensor:
             if (ith_Tensor.grad_fn is not None) and (ith_Tensor.parents is not None):
                 if ith_Tensor.grad is None:
                     ith_Tensor.grad = 1
-                    ith_Tensor.grad_fn(ith_Tensor.parents, ith_Tensor.grad) # Calls the backwards pass function to calculate the gradients for the input variables.
+                    ith_Tensor.grad_fn(ith_Tensor.parents, ith_Tensor.grad) # Calls the backwards pass function to calculate the gradients for the input Tensor.
 
                     myPrint(f"Had no grad, so set the ith Tensor's: {ith_Tensor} grad to 1.")
                 else:
@@ -163,8 +164,54 @@ class Tensor:
 
         return outputTensor
 
+    def dot(self, X):
+        '''
+        Docstring for dot
+
+        Basically takes a do product of your tensor and another tensor
+        
+        :param self: Description
+        :param X: Description
+
+
+        '''
+
+        output = self.data.dot(X.data)
+
+        outputTensor = Tensor(x = output, parents = [self, X], grad_fn = dotBackwards)
+
+        return outputTensor
+
     def __repr__(self):
         return f"{self.data}"
+ 
+#----------------------------------------- Backwards Functions --------------------------------------------
+
+def unbroadcast(childGrad: np.ndarray, reqGradShape):
+
+    '''
+    Docstring for unbroadcast
+
+    This function will be used to when we return gradients of sizes large than what is 
+    required. As in, in linear regression, the gradient that will be returned through
+    backwards pass is actually a vector, and we need the gradient with respect to b1 and
+    b0 to be scalar derivatives basically.
+    
+    :param childGrad: Description
+    :param parentShape: Description
+
+    '''
+
+    
+    while childGrad.ndim > len(reqGradShape):
+        childGrad = np.sum(childGrad, axis = 0)
+
+    for i, dim in enumerate(reqGradShape):
+        if dim == 1:
+            childGrad = np.sum(childGrad, axis = i, keepdims= True)
+    
+    return childGrad
+
 
 def accGrad(x: Tensor, curr_grad):
     ''' 
@@ -180,23 +227,44 @@ def powBackwards(parents: list[Tensor],  childGrad, power = 2):
 
     d_x = (power * x.data**(power - 1)) * childGrad
 
+    if d_x.shape != x.data.shape:
+        d_x = unbroadcast(d_x, x.data.shape)
+
     accGrad(x, d_x)
 
 def addBackwards(parents: list[Tensor, Tensor], childGrad):
-    
+    x = parents[0]
+    y = parents[1]
+
+
     d_x = 1 * childGrad
     d_y = 1 * childGrad
 
-    accGrad(parents[0], d_x)
-    accGrad(parents[1], d_y)
+    if d_x.shape != x.data.shape:
+        d_x = unbroadcast(d_x, x.data.shape)
+        
+    if d_y.shape != y.data.shape:
+        d_y = unbroadcast(d_y, x.data.shape)
+
+    accGrad(x, d_x)
+    accGrad(y, d_y)
 
 def subBackwards(parents: list[Tensor, Tensor], childGrad):
-    
+    x = parents[0]
+    y = parents[1]
+
+
     d_x = 1 * childGrad
     d_y = - 1 * childGrad
 
-    accGrad(parents[0], d_x)
-    accGrad(parents[1], d_y)
+    if d_x.shape != x.data.shape:
+        d_x = unbroadcast(d_x, x.data.shape)
+        
+    if d_y.shape != y.data.shape:
+        d_y = unbroadcast(d_y, x.data.shape)
+
+    accGrad(x, d_x)
+    accGrad(y, d_y)
 
 def mulBackwards(parents: list[Tensor, Tensor], childGrad):
     x = parents[0]
@@ -214,8 +282,15 @@ def mulBackwards(parents: list[Tensor, Tensor], childGrad):
     myPrint(f"y data: {y.data}")
     myPrint(f"child grad =  {childGrad}")
 
+
     d_x = y.data * childGrad
     d_y = x.data * childGrad
+
+    if d_x.shape != x.data.shape:
+        d_x = unbroadcast(d_x, x.data.shape)
+        
+    if d_y.shape != y.data.shape:
+        d_y = unbroadcast(d_y, x.data.shape)
 
     myPrint(f"Multiplication Grads:")
     myPrint(f"df/dx = {d_x}")
@@ -225,21 +300,36 @@ def mulBackwards(parents: list[Tensor, Tensor], childGrad):
     accGrad(x, d_x)
     accGrad(y, d_y)
 
+def dotBackwards(parents: list[Tensor, Tensor], childGrad):
+
+    X = parents[0]
+    Y = parents[1]
+
+    d_X = Y.data * childGrad
+    d_Y = X.data * childGrad
+
+    accGrad(X, d_X)
+    accGrad(Y, d_Y)
 
 if __name__ == "__main__":
-    x_array = np.array([2, 3, 4])
-    y_array = np.array([3, 4, 5])
-    two_array = np.array([2, 2, 2])
-    two = Tensor(x = two_array)
-    x = Tensor(x = x_array)
-    y = Tensor(x = y_array)
+    x_array = np.array([1, 2, 3])
+    y_array = np.array([1, 2, 2])
 
-    # c = x * y
-    z =  x ** 3
+    b0 = Tensor(x = np.array(1))
+    b1 = Tensor(x = np.array(1))
 
-    # e = x**2
-    # print("Add of x, y", d, "\n")
+    X = Tensor(x = x_array)
+    Y = Tensor(x = y_array)
 
-    z.backwards()
+    I = (Y - (b0 + (b1 * X)))
+    avg_Const = 1/(len(X.data))
+    SE = I.dot(I)
 
-    print(f"x's grad = {x.grad}")
+    MSE = avg_Const * SE
+
+    print(SE)
+
+    SE.backwards()
+
+    print(f"b0's grad = {b0.grad}")
+    print(f"b1's grad = {b1.grad}")
