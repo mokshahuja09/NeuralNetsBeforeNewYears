@@ -135,7 +135,7 @@ class Tensor:
 
         output = self.data - y.data
 
-        outputTensor = Tensor(x= output, parents = [self, y], grad_fn= addBackwards)
+        outputTensor = Tensor(x= output, parents = [self, y], grad_fn= subBackwards)
 
         return outputTensor
 
@@ -244,7 +244,7 @@ def addBackwards(parents: list[Tensor, Tensor], childGrad):
         d_x = unbroadcast(d_x, x.data.shape)
         
     if d_y.shape != y.data.shape:
-        d_y = unbroadcast(d_y, x.data.shape)
+        d_y = unbroadcast(d_y, y.data.shape)
 
     accGrad(x, d_x)
     accGrad(y, d_y)
@@ -261,7 +261,7 @@ def subBackwards(parents: list[Tensor, Tensor], childGrad):
         d_x = unbroadcast(d_x, x.data.shape)
         
     if d_y.shape != y.data.shape:
-        d_y = unbroadcast(d_y, x.data.shape)
+        d_y = unbroadcast(d_y, y.data.shape)
 
     accGrad(x, d_x)
     accGrad(y, d_y)
@@ -290,7 +290,7 @@ def mulBackwards(parents: list[Tensor, Tensor], childGrad):
         d_x = unbroadcast(d_x, x.data.shape)
         
     if d_y.shape != y.data.shape:
-        d_y = unbroadcast(d_y, x.data.shape)
+        d_y = unbroadcast(d_y, y.data.shape)
 
     myPrint(f"Multiplication Grads:")
     myPrint(f"df/dx = {d_x}")
