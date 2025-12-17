@@ -315,21 +315,37 @@ if __name__ == "__main__":
     x_array = np.array([1, 2, 3])
     y_array = np.array([1, 2, 2])
 
-    b0 = Tensor(x = np.array(1))
-    b1 = Tensor(x = np.array(1))
+    b0 = Tensor(x = np.array(1.0))
+    b1 = Tensor(x = np.array(1.0))
 
     X = Tensor(x = x_array)
     Y = Tensor(x = y_array)
 
-    I = (Y - (b0 + (b1 * X)))
-    avg_Const = 1/(len(X.data))
-    SE = I.dot(I)
+    lr = 0.01
 
-    MSE = avg_Const * SE
+    for i in range(1000):
+        I = (Y - (b0 + (b1 * X)))
+        avg_Const = 1/(len(X.data))
+        SE = I.dot(I)
 
-    print(SE)
+        MSE = avg_Const * SE
 
-    SE.backwards()
+        print(SE)
 
-    print(f"b0's grad = {b0.grad}")
-    print(f"b1's grad = {b1.grad}")
+        SE.backwards()
+
+        print(f"b0's grad = {b0.grad}")
+        print(f"b1's grad = {b1.grad}")
+
+        if (np.sqrt(b0.grad**2 + b1.grad**2) < 0.0005):
+            print('Breaking due to tiny gradients')
+            break
+
+        b0.data -= b0.grad * lr
+        b1.data -= b1.grad * lr
+
+        b0.grad = 0
+        b1.grad = 0
+
+    print(b0, b1)
+    
