@@ -4,8 +4,12 @@
 # Update: Tue, 2025|12|16, the code finally has a base to rest on: the topological sort. Although inefficienct, it sorts through the graph perfectly, and
 #         now the all that is required is coming up with the right forwards and backwards passes for the elementary functions, and we should be good to go.
 
+# Update: Wed 2025|12|17 Linear Regression finally works! Now its just time 
+
+
 import numpy as np
 from functools import partial
+import matplotlib.pyplot as plt
 
 def myPrint(statement = f"Demo Day", supress = True):
         if not supress:
@@ -324,18 +328,19 @@ if __name__ == "__main__":
     lr = 0.01
 
     for i in range(1000):
-        I = (Y - (b0 + (b1 * X)))
+        Y_Pred = b0 + (b1 * X)
+        I = (Y - (Y_Pred))
         avg_Const = 1/(len(X.data))
         SE = I.dot(I)
 
         MSE = avg_Const * SE
 
-        print(SE)
+        print(f"Total Squared Error{SE.data: 0.2f}")
 
         SE.backwards()
 
-        print(f"b0's grad = {b0.grad}")
-        print(f"b1's grad = {b1.grad}")
+        print(f"b0's grad = {b0.grad : 0.4f}")
+        print(f"b1's grad = {b1.grad: 0.5f}")
 
         if (np.sqrt(b0.grad**2 + b1.grad**2) < 0.0005):
             print('Breaking due to tiny gradients')
@@ -348,4 +353,15 @@ if __name__ == "__main__":
         b1.grad = 0
 
     print(b0, b1)
-    
+
+    x_pred = np.linspace(X.data.min() - 5, X.data.max() + 5, 1000)
+    y_pred = b0.data + (b1.data * x_pred)
+    y_pred_str = f"{b0.data: 0.2f} + {b1.data: 0.2f}x"
+
+    plt.figure(figsize = (10, 6))
+    plt.scatter(X.data, Y.data, label = 'Data')
+    plt.plot(x_pred, y_pred, label = 'Predicted, Best Fit line: ' + y_pred_str)
+    plt.grid()
+    plt.legend()
+    plt.title('Linear Regression with Autograd')
+    plt.show()    
