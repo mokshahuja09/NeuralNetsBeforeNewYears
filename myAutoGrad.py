@@ -1,11 +1,5 @@
-# Note: This is not the whole autograd, still building the whole thing, there are problems: specifically the topological sort has not been implemented yet.
-# An example of where this code fails is: y = z^(2), such that z = 2x
-
-# Update: Tue, 2025|12|16, the code finally has a base to rest on: the topological sort. Although inefficienct, it sorts through the graph perfectly, and
-#         now the all that is required is coming up with the right forwards and backwards passes for the elementary functions, and we should be good to go.
-
-# Update: Wed 2025|12|17 Linear Regression finally works! Now its just time 
-
+# Update: I added matmul, matmul backwards. I have fully built the autograd engine, and fuck the softmax shit. 
+# Update: First Neural Net Implemented
 
 import numpy as np
 from functools import partial
@@ -40,14 +34,14 @@ class Tensor:
             T = [finalNode] # Starts with the final Node of the graph, and initializes tensor list
             dependancies = [finalNode] # Initializes dependancy list
 
-            while exists and (t < 100): 
+            while exists and (t < 1000): 
                 t += 1
                 myPrint(statement = "--------------------------\n")
                 myPrint(f"Now investigating the tensor list: {T}") 
 
                 Tpar = [] # Initializes a parent list
 
-                for each_T in T: # FOr loop to iterate through the tensors in the tensor list
+                for each_T in T: # For loop to iterate through the tensors in the tensor list
                     myPrint("-----\n")
                     myPrint(f"Here's each Tensor: {each_T}\n\n")
 
@@ -94,11 +88,11 @@ class Tensor:
 
             return dependancies
         
-        myPrint("Getting Dependencies", supress= False)
+        myPrint("\nGetting Dependencies\n", supress= True)
 
         dependencies = Topo2Sort(self)
 
-        myPrint(f"Here is the dependency list of tensors :{dependencies}", supress= False)
+        myPrint(f"Here is the dependency list of tensors :{dependencies}", supress= True)
 
         # Starts the backward pass through the dependency list.
         for i in range(len(dependencies)):
@@ -108,7 +102,7 @@ class Tensor:
             #If the tensor has parents and the has a grad_fn, then call the backwards function corresponding to it
             if (ith_Tensor.grad_fn is not None) and (ith_Tensor.parents is not None):
                 if ith_Tensor.grad is None:
-                    ith_Tensor.grad = 1
+                    ith_Tensor.grad = np.ones_like(ith_Tensor.data)
                     ith_Tensor.grad_fn(ith_Tensor.parents, ith_Tensor.grad) # Calls the backwards pass function to calculate the gradients for the input Tensor.
 
                     myPrint(f"Had no grad, so set the ith Tensor's: {ith_Tensor} grad to 1.")
@@ -186,9 +180,65 @@ class Tensor:
 
         return outputTensor
 
+    def __matmul__(self, Y):
+        X = self.data
+        Y_data = Y.data
+
+        output = X @ Y_data
+        outputTensor = Tensor(output, parents = [self, Y], grad_fn = matmulBackwards)
+
+        return outputTensor
+        
+    def ReLu(self):
+        output = np.maximum(0, self.data)
+
+        return Tensor(output, parents = [self], grad_fn= ReLuBackwards)    
+
+    def softmaxCrossEntropy(self, Y):
+        # Here, our self.data might be an m x n matrix with all our weighted ouputs from the neural network
+        # So for each value in a column vector, we will exponentiate the ith value, and then divide by the sum of all exponentiated values of the column.
+        # so p_i1 = e^(z_i1)/sum_over_j(e^(z_j1))
+
+        logits_shifted = self.data - np.max(self.data, axis=0, keepdims=True)
+        exps = np.exp(logits_shifted)
+        probs = exps / np.sum(exps, axis=0, keepdims=True)
+
+        # Now, our losses can be found, by using all our one hot y vectors by doing an element-wise multiplication
+        losses = Y.data * np.log(probs + 1e-15)
+
+        # Then here, we will sum the losses down each column, collapsing it into a 1 x n matrix
+        individual_losses = -np.sum(losses, axis=0)
+
+        # Then here, we average the losses to ensure that when its added up later on we don't get something too too big.
+        output_averaged = np.mean(individual_losses)
+        
+        # We store this so that we can use this in the backwards pass for softmax-CrossEntropy.
+        self.probs = probs
+        output_Tensor = Tensor(output_averaged, parents = [self, Y], grad_fn= softmaxCrossEntropyBackwards)
+
+
+        return output_Tensor
+
+    def mean(self):
+        # We need to divide the data by the number of elements
+        div = self.data.size
+        output = np.mean(self.data)
+        
+        # Backward logic: 
+        # The gradient of mean(x) w.r.t x is 1/N for every element
+        def meanBackwards(parents, childGrad):
+            x = parents[0]
+            # childGrad is a scalar (1.0)
+            # We broadcast it to 1/N for every element in x
+            d_x = (1.0 / x.data.size) * childGrad * np.ones_like(x.data)
+            accGrad(x, d_x)
+
+        return Tensor(output, parents=[self], grad_fn=meanBackwards)
+
     def __repr__(self):
         return f"{self.data}"
  
+
 #----------------------------------------- Backwards Functions --------------------------------------------
 
 def unbroadcast(childGrad: np.ndarray, reqGradShape):
@@ -215,7 +265,6 @@ def unbroadcast(childGrad: np.ndarray, reqGradShape):
             childGrad = np.sum(childGrad, axis = i, keepdims= True)
     
     return childGrad
-
 
 def accGrad(x: Tensor, curr_grad):
     ''' 
@@ -315,53 +364,164 @@ def dotBackwards(parents: list[Tensor, Tensor], childGrad):
     accGrad(X, d_X)
     accGrad(Y, d_Y)
 
+def matmulBackwards(parents: list[Tensor, Tensor], childGrad):
+    W = parents[0] # This is an k x n matrix
+    X = parents[1] # This is n x p
+    # Then clearly, through matmul, we get back a k x p matrix
+    # Since we get a k x p matrix, our incoming grad must also be k x p
+    # So childGrad: k x p
+
+    # Order matters, if Z = XY then dZ/dX is X^(T)
+    # Note that we're trying to update the weights in X,
+    # So we need d_X to be of the same dimension: k x n
+    # Since childGrad is k x p and Y.T is p x n, we clearly get back k x n
+    d_W = childGrad @ X.data.T
+
+
+    # Similarly, here we need d_Y to be of dimension: n x p
+    # X.T is clearly n x k and child grad is k x p
+    d_X = W.data.T @ childGrad
+
+
+    if d_W.shape != W.data.shape:
+        d_W = unbroadcast(d_W, W.data.shape)
+    if d_X.shape != X.data.shape:
+        d_X = unbroadcast(d_X, X.data.shape)
+
+
+    # Now we need to do accGrad
+    accGrad(W, d_W)
+    accGrad(X, d_X)
+
+def ReLuBackwards(parents: list[Tensor, Tensor], childGrad):
+    X = parents[0]
+
+    myMask = (X.data > 0).astype(float)
+    
+    d_X = childGrad * myMask
+    
+    accGrad(X, d_X)
+
+def softmaxCrossEntropyBackwards(parents: list[Tensor], childGrad):
+
+    Z = parents[0]
+    Y = parents[1]
+
+    P = Z.probs
+    batchSize = Y.data.shape[1]
+    
+    d_Z = (P - Y.data)/batchSize * childGrad
+
+    accGrad(Z, d_Z)
+
+def zeroGrad(tensors: list[Tensor]):
+    for i in range(len(tensors)):
+        tensors[i].grad = None
+
+def gradUpdate(tensors: list[Tensor], lr):
+    for i in range(len(tensors)):
+        myPrint(f"Tensor: {i} Grad: \n{tensors[i].grad}", supress = True)
+        tensors[i].data -= tensors[i].grad * lr
+        # print(tensors[i], '\n')
+
+
+
+
 if __name__ == "__main__":
-    x_array = np.array([1, 2, 3])
-    y_array = np.array([1, 2, 2])
+    print('hello world')
 
-    b0 = Tensor(x = np.array(1.0))
-    b1 = Tensor(x = np.array(1.0))
+    tensorList = []
 
-    X = Tensor(x = x_array)
-    Y = Tensor(x = y_array)
+    X_data = np.array( [[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 1.0]]  )
+    Y_data = np.array([[1.0, 1.0, 0, 0]])
+    W_1_data = np.array( [[1.0, -1.0], [1.0, 1.0]])
+    W_2_data = np.array( [[1.0, 1.0]])
 
-    lr = 0.01
+    b_1_data = np.array([[0.0], [0.0]])
+    b_2_data = np.array(0.0)
+
+    X = Tensor(X_data)
+    W_1 = Tensor(W_1_data)
+    W_2 = Tensor(W_2_data)
+    Y = Tensor(Y_data)
+
+    b1 = Tensor(b_1_data)
+    b2 = Tensor(b_2_data)
+
+    tensorList = [ W_1, W_2, b1, b2]
+
+    lr = 0.05
 
     for i in range(1000):
-        Y_Pred = b0 + (b1 * X)
-        I = (Y - (Y_Pred))
-        avg_Const = 1/(len(X.data))
-        SE = I.dot(I)
 
-        MSE = avg_Const * SE
+        Z_1 = (W_1 @ X) + b1
+        A_1 = Z_1.ReLu()
+        
 
-        print(f"Total Squared Error{SE.data: 0.2f}")
+        Z_2 = W_2 @ A_1 + b2
 
-        SE.backwards()
+        
+        SquaredErrors = (Z_2 - Y)**2
+        L = SquaredErrors.mean()
 
-        print(f"b0's grad = {b0.grad : 0.4f}")
-        print(f"b1's grad = {b1.grad: 0.5f}")
+        print(f"MSE Loss: {L.data}")
 
-        if (np.sqrt(b0.grad**2 + b1.grad**2) < 0.0005):
-            print('Breaking due to tiny gradients')
-            break
+        L.backwards()
 
-        b0.data -= b0.grad * lr
-        b1.data -= b1.grad * lr
+        # print(Z_2.grad)
+        # print(W_2.grad)
+        # print(A_1.grad)
 
-        b0.grad = 0
-        b1.grad = 0
+        gradUpdate(tensorList, lr = lr)
+        zeroGrad(tensorList)
 
-    print(b0, b1)
+print(W_1)
 
-    x_pred = np.linspace(X.data.min() - 5, X.data.max() + 5, 1000)
-    y_pred = b0.data + (b1.data * x_pred)
-    y_pred_str = f"{b0.data: 0.2f} + {b1.data: 0.2f}x"
 
-    plt.figure(figsize = (10, 6))
-    plt.scatter(X.data, Y.data, label = 'Data')
-    plt.plot(x_pred, y_pred, label = 'Predicted, Best Fit line: ' + y_pred_str)
-    plt.grid()
-    plt.legend()
-    plt.title('Linear Regression with Autograd')
-    plt.show()    
+    # x_array = np.array([1, 2, 3])
+    # y_array = np.array([1, 2, 2])
+
+    # b0 = Tensor(x = np.array(1.0))
+    # b1 = Tensor(x = np.array(1.0))
+
+    # X = Tensor(x = x_array)
+    # Y = Tensor(x = y_array)
+
+    # lr = 0.01
+
+    # for i in range(1000):
+    #     Y_Pred = b0 + (b1 * X)
+    #     I = (Y - (Y_Pred))
+    #     avg_Const = 1/(len(X.data))
+    #     SE = I.dot(I)
+
+    #     print(f"Total Squared Error{SE.data: 0.2f}")
+
+    #     SE.backwards()
+
+    #     print(f"b0's grad = {b0.grad : 0.4f}")
+    #     print(f"b1's grad = {b1.grad: 0.5f}")
+
+    #     if (np.sqrt(b0.grad**2 + b1.grad**2) < 0.0005):
+    #         print('Breaking due to tiny gradients')
+    #         break
+
+    #     b0.data -= b0.grad * lr
+    #     b1.data -= b1.grad * lr
+
+    #     b0.grad = 0
+    #     b1.grad = 0
+
+    # print(f"b0: {b0.data: 0.2f}, b1: {b1.data: 0.2f}\nLine of best fit: {b0.data: 0.2f} + {b1.data: 0.2f}*x")
+
+    # x_pred = np.linspace(X.data.min() - 5, X.data.max() + 5, 1000)
+    # y_pred = b0.data + (b1.data * x_pred)
+    # y_pred_str = f"{b0.data: 0.2f} + {b1.data: 0.2f}x"
+
+    # plt.figure(figsize = (10, 6))
+    # plt.scatter(X.data, Y.data, label = 'Data')
+    # plt.plot(x_pred, y_pred, label = 'Predicted, Best Fit line: ' + y_pred_str)
+    # plt.grid()
+    # plt.legend()
+    # plt.title('Linear Regression with Autograd')
+    # plt.show()    
