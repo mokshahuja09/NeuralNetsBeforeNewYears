@@ -31,6 +31,8 @@ I'm sure the code is inefficient, but it works.
 
 '''
 
+import time
+
 class Node:
     def __init__(self, num = 0, parents: list = None):
         self.num = num
@@ -200,6 +202,54 @@ def Topo2Sort(finalNode: Node):
     return dependancies
 
 
+def TopoSortDFS(finalNode: Node):
+    visited = set()
+    topoSorted = []
+
+    def buildTopo(childNode: Node, visitedSet: set, topoSortList: list):
+
+        parents = childNode.parents
+
+        if (parents is None) and (childNode not in visited):
+            visited.add(childNode)
+            topoSortList.append(childNode)
+        
+        elif parents is not None:
+
+            for parent in parents:
+                buildTopo(parent, visitedSet = visitedSet, topoSortList= topoSortList)
+
+                if parent not in visitedSet:
+                    visitedSet.add(parent)
+                    topoSortList.append(parent)
+
+    buildTopo(childNode= finalNode, visitedSet= visited, topoSortList= topoSorted)
+    topoSorted.append(finalNode)
+
+    return topoSorted 
+
+def Topo3Sort(finalNode: Node):
+    visited = set()
+    topoSorted = []
+
+    def buildTopo(childNode: Node, visitedSet: set, topoSortList: list):
+
+        if childNode in visitedSet:
+            return
+        
+        if childNode.parents is not None:
+            for parent in childNode.parents:
+                buildTopo(parent, visitedSet= visitedSet, topoSortList= topoSortList)
+        
+        visitedSet.add(childNode)
+        topoSortList.append(childNode)
+
+
+    buildTopo(childNode= finalNode, visitedSet= visited, topoSortList= topoSorted)
+
+    return topoSorted 
+
+
 H = Node(7)
 F = Node(5)
 E = Node(4, parents= [H])
@@ -209,15 +259,43 @@ D = Node(3, parents= [C, G])
 B = Node(1, parents = [E, D])
 A = Node(0, parents= [E, F])
 
+startBFSTime = time.time()
+
+BFS = Topo2Sort(B)
+
+endBFSTime = time.time()
+
+startDFS_otherTime = time.time()
+
+DFS_other = TopoSortDFS(B)
+
+endDFS_otherTime = time.time()
 
 
-X = Node(4)
+startDFS_mainTime = time.time()
+
+DFS_main = Topo3Sort(B)
+
+endDFS_mainTime = time.time()
+
+print(BFS)
+print(f"BFS's time = {startBFSTime - endBFSTime}")
+
+print(DFS_other)
+print(f"DFS's (mine) time = {startDFS_otherTime - endDFS_otherTime}")
+
+print(BFS)
+print(f"DFS's (main) time = {startDFS_mainTime - endDFS_mainTime}")
+
+
+
+
 # nodeList = [A, B, C, D, E, F]
 
 # print(nodeList)
 
 
-print(Topo2Sort(B))
+
 
 # print(nodeList)
 

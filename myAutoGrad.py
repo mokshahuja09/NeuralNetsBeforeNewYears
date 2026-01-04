@@ -1,5 +1,7 @@
-# Update: I added matmul, matmul backwards. I have fully built the autograd engine, and fuck the softmax shit. 
-# Update: First Neural Net Implemented
+# Update: 2026|01|04: Optimized the Toposort Algorithm to be faster by replacing the original BFS(Breadth-First Search) with a DFS(Depth-First Search)
+#                     The optimization was great! Sped up my neural net calculation from minutes to seconds! Perfect!
+
+# Next Steps: Documentation for the whole thing, plus a write up of what i learnt maybe.
 
 import numpy as np
 from functools import partial
@@ -88,16 +90,42 @@ class Tensor:
 
             return dependancies
         
+        def Topo3Sort(finalNode: Tensor):
+            '''
+
+                DFS Topological Sort
+            
+            '''
+            visited = set()
+            topoSorted = []
+
+            def buildTopo(childNode: Tensor, visitedSet: set, topoSortList: list):
+
+                if childNode in visitedSet:
+                    return
+                
+                if childNode.parents is not None:
+                    for parent in childNode.parents:
+                        buildTopo(parent, visitedSet= visitedSet, topoSortList= topoSortList)
+                
+                visitedSet.add(childNode)
+                topoSortList.append(childNode)
+
+
+            buildTopo(childNode= finalNode, visitedSet= visited, topoSortList= topoSorted)
+
+            return topoSorted
+        
         myPrint("\nGetting Dependencies\n", supress= True)
 
-        dependencies = Topo2Sort(self)
+        dependencies = Topo3Sort(self)
 
         myPrint(f"Here is the dependency list of tensors :{dependencies}", supress= True)
 
         # Starts the backward pass through the dependency list.
         for i in range(len(dependencies)):
 
-            ith_Tensor = dependencies[i]
+            ith_Tensor = dependencies[len(dependencies) - i - 1]
 
             #If the tensor has parents and the has a grad_fn, then call the backwards function corresponding to it
             if (ith_Tensor.grad_fn is not None) and (ith_Tensor.parents is not None):
@@ -193,6 +221,14 @@ class Tensor:
         output = np.maximum(0, self.data)
 
         return Tensor(output, parents = [self], grad_fn= ReLuBackwards)    
+
+
+    def softmax(self):
+        logits_shifted = self.data - np.max(self.data, axis=0, keepdims=True)
+        exps = np.exp(logits_shifted)
+        probs = exps / np.sum(exps, axis=0, keepdims=True)
+
+        return Tensor(probs)
 
     def softmaxCrossEntropy(self, Y):
         # Here, our self.data might be an m x n matrix with all our weighted ouputs from the neural network
@@ -419,12 +455,13 @@ def zeroGrad(tensors: list[Tensor]):
         tensors[i].grad = None
 
 def gradUpdate(tensors: list[Tensor], lr):
+    grad_mag = 0
     for i in range(len(tensors)):
+        grad_mag += np.sum(tensors[i].grad ** 2)
         myPrint(f"Tensor: {i} Grad: \n{tensors[i].grad}", supress = True)
         tensors[i].data -= tensors[i].grad * lr
+    return grad_mag
         # print(tensors[i], '\n')
-
-
 
 
 if __name__ == "__main__":
@@ -437,7 +474,7 @@ if __name__ == "__main__":
     W_1_data = np.array( [[1.0, -1.0], [1.0, 1.0]])
     W_2_data = np.array( [[1.0, 1.0]])
 
-    b_1_data = np.array([[0.0], [0.0]])
+    b_1_data = np.array([[-0.5], [-0.5]])
     b_2_data = np.array(0.0)
 
     X = Tensor(X_data)
@@ -468,60 +505,23 @@ if __name__ == "__main__":
 
         L.backwards()
 
-        # print(Z_2.grad)
-        # print(W_2.grad)
-        # print(A_1.grad)
-
-        gradUpdate(tensorList, lr = lr)
+        grad_mag= gradUpdate(tensorList, lr = lr)
+        if grad_mag < 0.0005:
+            break
         zeroGrad(tensorList)
 
-print(W_1)
+    print(f"Here is W_1:\n{W_1}\n\n")
+    print(f"Here is b_1:\n{b1}\n\n")
+    print(f"Her is W_2: \n{W_2}\n\n") 
+    print(f"Here is b_2:\n{b2}\n\n")
 
+    newData = np.array([[1], [0]])
 
-    # x_array = np.array([1, 2, 3])
-    # y_array = np.array([1, 2, 2])
+    inputTensor = Tensor(newData)
 
-    # b0 = Tensor(x = np.array(1.0))
-    # b1 = Tensor(x = np.array(1.0))
+    Z1 = ((W_1 @ inputTensor) + b1).ReLu()
 
-    # X = Tensor(x = x_array)
-    # Y = Tensor(x = y_array)
-
-    # lr = 0.01
-
-    # for i in range(1000):
-    #     Y_Pred = b0 + (b1 * X)
-    #     I = (Y - (Y_Pred))
-    #     avg_Const = 1/(len(X.data))
-    #     SE = I.dot(I)
-
-    #     print(f"Total Squared Error{SE.data: 0.2f}")
-
-    #     SE.backwards()
-
-    #     print(f"b0's grad = {b0.grad : 0.4f}")
-    #     print(f"b1's grad = {b1.grad: 0.5f}")
-
-    #     if (np.sqrt(b0.grad**2 + b1.grad**2) < 0.0005):
-    #         print('Breaking due to tiny gradients')
-    #         break
-
-    #     b0.data -= b0.grad * lr
-    #     b1.data -= b1.grad * lr
-
-    #     b0.grad = 0
-    #     b1.grad = 0
-
-    # print(f"b0: {b0.data: 0.2f}, b1: {b1.data: 0.2f}\nLine of best fit: {b0.data: 0.2f} + {b1.data: 0.2f}*x")
-
-    # x_pred = np.linspace(X.data.min() - 5, X.data.max() + 5, 1000)
-    # y_pred = b0.data + (b1.data * x_pred)
-    # y_pred_str = f"{b0.data: 0.2f} + {b1.data: 0.2f}x"
-
-    # plt.figure(figsize = (10, 6))
-    # plt.scatter(X.data, Y.data, label = 'Data')
-    # plt.plot(x_pred, y_pred, label = 'Predicted, Best Fit line: ' + y_pred_str)
-    # plt.grid()
-    # plt.legend()
-    # plt.title('Linear Regression with Autograd')
-    # plt.show()    
+    print(inputTensor.data.shape)
+    
+    output = W_2@Z1 + b2
+    print(output)
