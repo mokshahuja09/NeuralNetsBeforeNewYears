@@ -22,12 +22,36 @@ could have equally has [4, 1, 3, 5], as it still satisfies the above relation.
 Another way to look at it is, for every i <= len(S), S[i] is a maximal element of the
 subset list S[:i]. Let A be a set. x \in A is maximal if for every a \in A a !> x.
 
-The way the code works is consider our list S. We iterate through the list, starting with
+First Sort(Absolutely Useless for autograd):The way the code works is consider our list S. We iterate through the list, starting with
 S[i], and then we iterate through all the elements after it, through S[j] and check whether it's a parent
 of S[i], and if S[j] is a parent of S[i], then we swap the the two elements, that way 
 the parent is before the child Node. We keep going until there's a list where we cannot find
 a single node with its parents ahead of them. Each time the list is edited, we restart the double for loop.
 I'm sure the code is inefficient, but it works.
+
+Topo2Sort(BFS)(Functional for Autograd): Let me explain how this works by example: Note that this may be complicated
+Suppose that 5 -> 2, 0; 2 -> 6, 3, 1; 6 -> 3; 3 -> 1 ;; 7 -> 4; 4 ->  0, 1. The topological order starting back from
+1 is [7, 4, 5, 2, 6, 3, 1](Does not need to have 0 anywhere). Now clearly the final node that we end at is 1. So we start
+with the dependancy list = [1]. Since 1 has parents = [2, 3, 4], we check if its already in dependancies, and since its not
+we append all three [1, 2, 3, 4]. Now we go through the parents of 2, 3, 4: [5; 2, 6; 7]. Trivial with 5: [1, 2, 3, 4, 5].
+Now, since 2 is already there in the list, we remove it, and re-add to the end to maintain the right ordering: [1, 3, 4, 5, 2, 6, 7]
+Now we check the parents of [5; 2, 6; 7], which are: [None; 5, 2; None]. Now, for None, we just ignore and move forward. For 5, following
+the same remove-append procedure from last time: [1, 3, 4, 2, 6, 7, 5]. Then for 2: [1, 3, 4, 6, 7, 5, 2]. Now we check parents of 2, 5: [5, None]
+Then the final list is then: [1, 3, 4, 6, 7, 2, 5], which if you want in ascending is then: [5, 2, 7, 6, 4, 3, 1]. Note that there are other
+ways of arranging this list, this is just based on the example above.
+
+TopoSortDFS(Functional for autograd as well): So the point of this DFS is to search through a whole tree of parents before adding any to your
+dependancy list. So following on from the same example above, let's start at 1. Note that I haven't yet added this to the dependancy list yet.
+The way this works is that we dig down recursively to the bottom and stop when we find a leaf node, which we then add. Then the parents corresponding
+to that branch get added subsequently, checking whether they've been added previously or not, to deal with duplicates. Since we do this branch wise and
+depth first, we always add the lower ones in the branch before the upper ones, and thereby avoid creating any issues with the order.
+
+Topo3Sort(DFS)(Best autograd implementation): This too, does a DFS to topologically sort the tensors. This works in a similar manner to the last one,
+except much more efficiently. This algorithmn can be summarized in the following way: "add my parents first, and then add me". So this goes all the way
+to the bottom, recursively by checking whether the your tensor/node has parents, and the then adds the first root node that does not have parents. Then
+after all the root nodes of the corresponding branch have been added, the nodes above get added, and thereby in the same way as above, avoid the ordering
+issue. One thing to note, is that this avoids branches that have been added altogether and is what makes this about 10 times faster the ToposortDFS algo
+above. 
 
 '''
 
@@ -131,7 +155,7 @@ def Topo2Sort(finalNode: Node):
     to think of and build.
 
     Correction, this is me a few hours later, realizing that this is the expected behaviour that we want with out autograd! Yay!
-    Although this is crazilly inefficient, I could care less, since I came with this algo myself. I'll build the more efficient
+    Although this is crazily inefficient, I could care less, since I came with this algo myself. I'll build the more efficient
     algorithm some other time.
 
     Okay. So why this works is because
@@ -154,7 +178,7 @@ def Topo2Sort(finalNode: Node):
 
         Tpar = [] # Initializes a parent list
 
-        for each_T in T: # FOr loop to iterate through the tensors in the tensor list
+        for each_T in T: # For loop to iterate through the tensors in the tensor list
             print("-----\n")
             print(f"Here's each Tensor: {each_T}\n\n")
 
@@ -203,45 +227,47 @@ def Topo2Sort(finalNode: Node):
 
 
 def TopoSortDFS(finalNode: Node):
-    visited = set()
-    topoSorted = []
+    visited = set() # Set is needed because we need to do lookups constantly, and sets are the fastest way to do it
+    topoSorted = [] # Initializing the final dependancy and sorted list
 
     def buildTopo(childNode: Node, visitedSet: set, topoSortList: list):
 
         parents = childNode.parents
 
-        if (parents is None) and (childNode not in visited):
-            visited.add(childNode)
+        if (parents is None) and (childNode not in visited): # Checks if this is a leaf node, and whether or not it is already in the topoSort list
+            visited.add(childNode) # If it doesn't have parents and it's not already in the toposort list, then the function adds it to both
             topoSortList.append(childNode)
         
-        elif parents is not None:
+        elif parents is not None: # However, if it has parents, we need to re-do it with the gradparents as well, until we find a leaf node.
 
-            for parent in parents:
+            for parent in parents: # Go through each parent, and recursively keep going until you find a leaf node, and build up from there
                 buildTopo(parent, visitedSet = visitedSet, topoSortList= topoSortList)
 
-                if parent not in visitedSet:
+                if parent not in visitedSet: # Now that the children of each of the parents has been added, we can now check if the parents can be added as well
                     visitedSet.add(parent)
                     topoSortList.append(parent)
 
     buildTopo(childNode= finalNode, visitedSet= visited, topoSortList= topoSorted)
-    topoSorted.append(finalNode)
+    topoSorted.append(finalNode) # Since there was no call to add this to the end of the list, we add it now
 
     return topoSorted 
 
 def Topo3Sort(finalNode: Node):
-    visited = set()
-    topoSorted = []
+    visited = set() # Used for fast lookups
+    topoSorted = [] # Final dependancy list
 
     def buildTopo(childNode: Node, visitedSet: set, topoSortList: list):
 
-        if childNode in visitedSet:
+        if childNode in visitedSet: # If our childNode is in visited, we don't need to check that branch, as its already covered
             return
         
-        if childNode.parents is not None:
+        if childNode.parents is not None: # If there are parents keep going until you find one without parents
             for parent in childNode.parents:
                 buildTopo(parent, visitedSet= visitedSet, topoSortList= topoSortList)
         
-        visitedSet.add(childNode)
+        # The first time this part of the function will run will be when the code reaches a leaf node with no parents,
+        # And after that this will exeute when the branch keeps completing, like when the for loop for each node finishes.
+        visitedSet.add(childNode) 
         topoSortList.append(childNode)
 
 
@@ -284,7 +310,7 @@ print(f"BFS's time = {startBFSTime - endBFSTime}")
 print(DFS_other)
 print(f"DFS's (mine) time = {startDFS_otherTime - endDFS_otherTime}")
 
-print(BFS)
+print(DFS_main)
 print(f"DFS's (main) time = {startDFS_mainTime - endDFS_mainTime}")
 
 

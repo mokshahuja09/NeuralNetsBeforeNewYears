@@ -4,6 +4,21 @@ import myAutoGrad as ag
 
 
 class Module:
+    '''
+        Base module of what will be used for any neural net layer.
+
+        forward(self, x): gets the forward pass of the layer, for given inputs x. Since we are using tensors, this will also create the backwards pass.
+        
+        __call__(self, x): This just passes back the forward pass. So when we do model = Linear(); Linear(x) x is passed through a linear layer.
+
+        parameters: Suppose that we have a linear layer. Then we do WX + b, and so the parameters are W and b. The function returns the tensors
+                    whose weights need to be adjusted.
+
+        zeroGrad: This method just takes every parameter tensor and sets the gradients to zero when called.
+
+
+    
+    '''
     def __init__(self):
         pass
 
@@ -22,6 +37,14 @@ class Module:
 
         
 class SGD:
+    '''
+    This class is solely responsible for two things:
+     
+    step(self): updates the parameter tensor of every layer
+
+    zeroGrad(self): zeroes the grad of each parameter tensor.
+
+    '''
     def __init__(self, params: list[ag.Tensor], lr):
         self.params = params
         self.lr = lr
@@ -38,6 +61,19 @@ class SGD:
 
     
 class Linear(Module):
+    '''
+    The linear layer is what take an input tensor X, or A_i returns Z = WX + b, where W is a weights matrix and b is the bias vector.
+
+    forward(self, x): gets the forward pass of the layer, for given inputs x. Since we are using tensors, this will also create the backwards pass.
+        
+    __call__(self, x): This just passes back the forward pass. So when we do model = Linear(); Linear(x) x is passed through a linear layer.
+
+    parameters: Suppose that we have a linear layer. Then we do WX + b, and so the parameters are W and b. The function returns the tensors
+                    whose weights need to be adjusted.
+
+    zeroGrad: This method just takes every parameter tensor and sets the gradients to zero when called.
+
+    '''
     def __init__(self, in_features, out_features):
         super().__init__()
         self.in_features = in_features
@@ -64,6 +100,16 @@ class Linear(Module):
     
 class Sequential(Module):
 
+    '''
+
+    The sequential class does the following:
+
+    forward(X: Tensor): iterates through a sequence of layers spsecified by the user through a list, by calling the foward pass of each of the layers.
+
+    parameters(self): the parameters method iterates through a sequence of layers and for each, calls the paramters and stores each paramter in a list.
+    
+    '''
+
     def __init__(self, layers: list):
         super().__init__()
         self.layers = layers
@@ -83,7 +129,7 @@ class Sequential(Module):
         layers = self.layers
         tensorList = []
 
-        for eachLayer in reversed(layers):
+        for eachLayer in reversed(layers):# It doesn't actually matter how whether you use reversed or not.
             tensorList += eachLayer.parameters()
         
         return tensorList
@@ -97,6 +143,9 @@ class ReLu(Module):
 
             
 if __name__ == '__main__':
+
+    # Simple execution of the XOR dataset. Expected output: [1, 1, 0, 0].
+
     X_data = np.array( [[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 1.0]]  )
     Y_data = np.array([[1.0, 1.0, 0, 0]])
 

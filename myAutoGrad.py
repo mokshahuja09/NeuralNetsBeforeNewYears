@@ -94,6 +94,11 @@ class Tensor:
             '''
 
                 DFS Topological Sort
+
+                Topo3Sort(DFS)(Best autograd implementation): This too, does a DFS to topologically sort the tensors. This algorithmn can be summarized in the following way:
+                "add my parents first, and then add me". So this goes all the way to the bottom, recursively by checking whether the your tensor/node has parents, and the 
+                then adds the first root node that does not have parents. Then after all the root nodes of the corresponding branch have been added, the nodes above get added,
+                and thereby in the same way as above, avoid the ordering issue. One thing to note, is that this avoids branches that have been added altogether,
             
             '''
             visited = set()
@@ -465,18 +470,21 @@ def gradUpdate(tensors: list[Tensor], lr):
 
 
 if __name__ == "__main__":
+
+    # Executing the XOR neural net, with 2 neurons in the first layer and 1 in the output layer.
     print('hello world')
 
     tensorList = []
 
-    X_data = np.array( [[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 1.0]]  )
-    Y_data = np.array([[1.0, 1.0, 0, 0]])
-    W_1_data = np.array( [[1.0, -1.0], [1.0, 1.0]])
+    X_data = np.array( [[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 1.0]]  ) # Create data
+    Y_data = np.array([[1.0, 1.0, 0, 0]]) # Label outputs
+    W_1_data = np.array( [[1.0, -1.0], [1.0, 1.0]]) # Initialize the weight matrices. Note that choosing negative numbers ensures that not all neurons are firing.
     W_2_data = np.array( [[1.0, 1.0]])
 
-    b_1_data = np.array([[-0.5], [-0.5]])
+    b_1_data = np.array([[-0.5], [-0.5]]) # For the same reason not choosing all postive numbers for the biases ensures that neurons aren't always firing
     b_2_data = np.array(0.0)
 
+    # Tensorize all the data, weights and baises
     X = Tensor(X_data)
     W_1 = Tensor(W_1_data)
     W_2 = Tensor(W_2_data)
@@ -485,19 +493,21 @@ if __name__ == "__main__":
     b1 = Tensor(b_1_data)
     b2 = Tensor(b_2_data)
 
+    # Create the list of tensors that needs to be updated with their respective grads.
     tensorList = [ W_1, W_2, b1, b2]
 
     lr = 0.05
 
-    for i in range(1000):
+    for i in range(2000):
 
+        # Layer 1
         Z_1 = (W_1 @ X) + b1
         A_1 = Z_1.ReLu()
         
-
+        # Layer 2 (Output layer)
         Z_2 = W_2 @ A_1 + b2
 
-        
+        # MSE used for this data set
         SquaredErrors = (Z_2 - Y)**2
         L = SquaredErrors.mean()
 
@@ -505,8 +515,10 @@ if __name__ == "__main__":
 
         L.backwards()
 
+        # Update all the tensors and calculate whether the grad is small enough to quit.
         grad_mag= gradUpdate(tensorList, lr = lr)
-        if grad_mag < 0.0005:
+        if grad_mag < 0.00005:
+            print(f"broke out of the loop due to tiny grads: {round(grad_mag, 6)}")
             break
         zeroGrad(tensorList)
 
